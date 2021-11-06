@@ -1,4 +1,3 @@
-# replace .war with .jar or .ear if needed
 name: Whitesource Prioritize Java with Maven
 
 on:
@@ -19,6 +18,7 @@ jobs:
       with:
         java-version: '8'
         distribution: 'adopt'
+    
     - name: Cache local Maven repository
       uses: actions/cache@v2
       with:
@@ -29,25 +29,33 @@ jobs:
 
     - name: Build with Maven
       run: mvn clean install -DskipTests=true
+
     - name: WhiteSource Unified Agent Scan
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
         WS_APIKEY: ${{secrets.APIKEY}}
         WS_USERKEY: ${{secrets.USERKEY}}
-        WS_WSS_URL: https://saas.whitesourcesoftware.com/agent
-        WS_PRODUCTNAME: GH_${{github.event.repository.name}}
-        WS_PROJECTNAME: ${{github.ref}}_Prioritize
-        WS_ENABLEIMPACTANALYSIS: true
-        WS_REQUIREKNOWNSHA1: false
-        WS_RESOLVEALLDEPENDENCIES: false
-        WS_MAVEN_RESOLVEDEPENDENCIES: true
-        WS_MAVEN_AGGREGATEMODULES: true
-        WS_FILESYSTEMSCAN: false
-        WS_GENERATEPROJECTDETAILSJSON: true
       run: |
+        cat <<EOF > eua.config
+        apiKey=$WS_APIKEY
+        userKey=$WS_USERKEY
+        wss.url=https://saas.whitesourcesoftware.com/agent
+        productName=GH_${{ github.event.repository.name }}
+        projectName=${{ github.ref }}_Prioritize
+        enableImpactAnalysis=true
+        requireKnownSha1=false
+        resolveAllDependencies=false
+        maven.resolveDependencies=true
+        maven.aggregateModules=true
+        fileSystemScan=false
+        generateProjectDetailsJson=true
+        EOF
+        cat eua.config
+        echo config created successfully
         curl -LJO https://unified-agent.s3.amazonaws.com/wss-unified-agent.jar
+        curl -LJO https://unified-agent.s3.amazonaws.com/xModuleAnalyzer/xModuleAnalyzer.jar
         echo Unified Agent downloaded successfully
-        WARFILE=$(find ./ -type f -wholename "*/target/*.war")
-        echo $WARFILE will be added to appPath
-        java -jar wss-unified-agent.jar -appPath $WARFILE -d ./
-        
+        java -jar wss-unified-agent.jar -d ./ -analyzeMultiModule multimodule.txt
+        echo 'multimodule.txt contents'
+        cat multimodule.txt
+        java -jar xModuleAnalyzer.jar -xModulePath multimodule.txt -fsaJarPath ./wss-unified-agent.jar -c ./eua.config -aggregateModules true
